@@ -1,6 +1,6 @@
 # ELK stack
 
-![ELK](./images/elk.png)
+![ELK](./imgs/elk.png)
 
 ## Description: 
 - The ELK stack comprises three powerful open-source tools: Elasticsearch, Logstash, and Kibana. Together, these tools enable users to efficiently collect, search, analyze, and visualize large volumes of log data in real-time. This integration helps users gain deeper insights into their logs, detect anomalies, and visualize data for better understanding and decision-making.
@@ -85,5 +85,5 @@ curl -s --cacert config/certs/ca/ca.crt -X POST "https://kibana:5601/api/kibana/
 
 Example of a Kibana dashboard:
 
-![Kibana](./images/kibana.png)
+![Kibana](./imgs/kibana.png)
 
