@@ -83,6 +83,15 @@ and add kibana dashboard.
 curl -s --cacert config/certs/ca/ca.crt -X POST "https://kibana:5601/api/kibana/dashboards/import?exclude=logs-*" -H "Content-Type: application/json" -H "kbn-xsrf: true" -d @/usr/share/elasticsearch/dashboard1.json -u "elastic:${ELASTIC_PASSWORD}" 
 ```
 
+## Useful links:
+- https://www.youtube.com/watch?v=Hqn5p67uev4
+- https://www.elastic.co/guide/en/elasticsearch/reference/8.14/docker.html
+- https://www.elastic.co/guide/en/elasticsearch/reference/8.14/certutil.html
+- https://www.elastic.co/guide/en/kibana/8.14/docker.html
+- https://www.elastic.co/guide/en/kibana/current/create-a-dashboard-of-panels-with-web-server-data.html
+- https://www.elastic.co/guide/en/kibana/current/dashboard-api.html
+- https://www.elastic.co/guide/en/kibana/current/configuring-tls.html
+
 Example of a Kibana dashboard:
 
 ![Kibana](./imgs/kibana.png)
