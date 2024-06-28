@@ -1,0 +1,135 @@
+services:
+  setup:
+    image: "elasticsearch:$STACK_VERSION"
+    volumes:
+      - "certs:/usr/share/elasticsearch/config/certs"
+      - "./kibana/dashboards/dashboard1.json:/usr/share/elasticsearch/dashboard1.json"
+    user: root
+    networks:
+      - elastic
+    command: |
+      bash -c '
+        if [ ! -f config/certs/ca.zip ]; then
+          echo "Creating CA";
+          bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip;
+          unzip config/certs/ca.zip -d config/certs;
+        fi;
+        if [ ! -f config/certs/certs.zip ]; then
+          echo "Creating certs";
+          echo -ne \
+          "instances:\n"\
+          "  - name: elasticsearch\n"\
+          "    dns:\n"\
+          "      - elasticsearch\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: kibana\n"\
+          "    dns:\n"\
+          "      - kibana\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          > config/certs/instances.yml;
+          bin/elasticsearch-certutil cert --silent --pem -out config/certs/certs.zip --in config/certs/instances.yml --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key;
+          unzip config/certs/certs.zip -d config/certs;
+        fi;
+        echo "Setting file permissions"
+        chown -R root:root config/certs;
+        find . -type d -exec chmod 755 \{\} \;;
+        find . -type f -exec chmod 644 \{\} \;;
+        echo "Waiting for Elasticsearch availability";
+        until curl -s --cacert config/certs/ca/ca.crt https://elasticsearch:9200 | grep -q "missing authentication credentials"; do sleep 30; echo Waiting for Elasticsearch...; done;
+        until curl -s -X POST --cacert config/certs/ca/ca.crt -u "elastic:${ELASTIC_PASSWORD}" -H "Content-Type: application/json" https://elasticsearch:9200/_security/user/kibana_system/_password -d "{\"password\":\"${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
+        echo "Waiting for Kibana availability";
+        until curl -s --cacert config/certs/ca/ca.crt -X POST "https://kibana:5601/api/kibana/dashboards/import?exclude=logs-*" -H "Content-Type: application/json" -H "kbn-xsrf: true" -d @/usr/share/elasticsearch/dashboard1.json -u "elastic:${ELASTIC_PASSWORD}" | grep -q '"objects"'; do sleep 10; echo Waiting for Elasticsearch...; done;
+        echo "All done!";
+      '  
+    environment:
+      - KIBANA_PASSWORD=$KIBANA_PASSWORD
+      - ELASTIC_PASSWORD=$ELASTIC_PASSWORD
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://10.5.0.4:12201"
+
+  logstash:
+    image: "logstash:$STACK_VERSION"
+    container_name: logstash
+    volumes:
+      - ./logstash/logstash.conf/:/usr/share/logstash/pipeline/logstash.conf
+      - ./logstash/logstash.yml/:/usr/share/logstash/config/logstash.yml
+      - "certs:/usr/share/logstash/config/certs"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ELASTIC_PASSWORD=$ELASTIC_PASSWORD
+    networks:
+      elastic:
+        ipv4_address: 10.5.0.4
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://10.5.0.4:12201"
+
+  elasticsearch:
+    image: "elasticsearch:$STACK_VERSION"
+    container_name: elasticsearch
+    networks:
+      - elastic
+    restart: unless-stopped
+    volumes:
+      - "./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml"
+      - "elasticsearch_mount:/usr/share/elasticsearch/data"
+      - "certs:/usr/share/elasticsearch/config/certs"
+    environment:
+      - ELASTIC_PASSWORD=$ELASTIC_PASSWORD
+    mem_limit: 1073741824 # setting the memoty limit to prevent the 137 exit error
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://10.5.0.4:12201"
+
+  kibana:
+    image: "kibana:$STACK_VERSION"
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    volumes:
+      - "./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml"
+      - "certs:/usr/share/kibana/config/certs"
+    environment:
+      - SERVERNAME=kibana
+      - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=$KIBANA_PASSWORD
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
+      - elasticsearch.password=$ELASTIC_PASSWORD
+    networks:
+      - elastic
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://10.5.0.4:12201"
+
+networks:
+  elastic:
+    name: elastic
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/24
+
+volumes:
+  elasticsearch_mount:
+    name: elasticsearch_mount
+    driver: local
+  certs:
+    name: certs
+    driver: local
